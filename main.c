@@ -566,3 +566,440 @@ void W_point(uchar x,uchar y,uchar color)
 		W_pixel(x+1,y+1,0);
 	}
 }
+
+/********************************
+建立蛇结构体
+********************************/
+typedef struct _Snake
+{
+	uchar x;		//蛇头左上横坐标
+	uchar y;		//蛇头左上纵坐标
+	uchar direction;		//蛇移动方向,2上，4左，6右，8下
+	uchar score;		//分数	
+	uchar life;		//蛇是否存活，1代表存活，0代表死亡	
+	uchar flag;		//1开始，0暂停
+	uchar sub;		//蛇头的数组下标
+	uchar speed;		//速度，数值越大速度越慢
+}Snake;
+
+uchar loc[13][2];		//存放蛇的坐标,达到10个即过关
+
+/********************************
+建立初始蛇身
+********************************/
+Snake snake;		//蛇
+
+void init_snake()
+{
+	uchar i;
+	delay(10);
+	W_point(2,30,1);
+	delay(10);
+	W_point(4,30,1);
+	delay(10);
+	W_point(6,30,1);
+
+//蛇的初始数据	
+	snake.x=6;
+	snake.y=30;
+	snake.life=1;
+	snake.score=0;
+	snake.direction=6;
+	snake.flag=1;	
+	snake.sub=2;
+	snake.speed=100;
+
+//对数组清为0，为下一关做准备
+	for(i=0;i<13;i++)
+	{
+		loc[i][0]=0;
+		loc[i][1]=0;
+	}
+	
+//将初始蛇身放进数组
+	loc[0][0]=2;	
+	loc[0][1]=30;
+	loc[1][0]=4;
+	loc[1][1]=30;	
+	loc[2][0]=6;
+	loc[2][1]=30;	  
+}
+
+/********************************
+打印分数
+********************************/
+void W_score_word()
+{
+	uchar score_word[]={"得分"};
+	uchar i;
+	i=0;
+
+	LCD_init_score();
+	LCD_pos(0,6);
+	while(score_word[i]!='\0')
+	{
+		W_data(score_word[i]);
+		i++;
+	}
+	LCD_pos(1,7);
+}
+
+void W_score()
+{
+	LCD_init_score();
+	LCD_pos(1,7);
+	
+	if(win_score==10)
+	{
+		LCD_pos(1,6);
+		delay_nop();
+		W_data(num[1]);
+	}
+	LCD_pos(1,7);
+	W_data(num[win_score]);
+}
+
+/********************************
+计时函数
+********************************/
+uchar min,sec,sec_ten,sec_ge;
+void W_time()
+{
+	LCD_init_score();
+	LCD_pos(3,7);
+	delay(5);
+	if(snake.flag==1)
+	{
+		delay_nop();
+		sec_ten=sec/10;		//秒的十位
+		sec_ge=sec%10;		//秒的个位				   
+		
+		if(sec==0)		//需要的时候再写分，避免重复写一样的数据
+		{
+			LCD_pos(3,6);
+			W_data(num[min]);
+			W_data(':');
+		}
+		LCD_pos(3,7);
+		W_data(num[sec_ten]);
+		W_data(num[sec_ge]);
+
+		if(sec==59)
+		{
+			min++;
+			sec=0;
+		}
+		else
+		{
+			sec++;
+		}
+	}
+
+}
+
+/********************************
+产生随机数来获得食物坐标
+********************************/
+typedef struct Food		//食物
+{						
+	uchar x;			
+	uchar y;
+}Food;
+
+Food food;
+
+void W_food()
+{
+	uchar x;
+	uchar y;
+
+	uchar temp_x;
+	uchar temp_y;
+
+	temp_x=loc[snake.sub-1][0];		//最后调试的时候发现加上这个，然后自增，
+	temp_y=loc[snake.sub-1][1];		//可以解决死循环的问题。
+									//有成功过
+	do				   //调试的时候发现在最后一关会
+	{				   //由于食物画不出来而陷入死循环
+		srand(temp_x);		//将蛇的第二个坐标作为种子，
+		x=2*(rand()%33+1);
+		srand(temp_y);		//这样食物出现的位置不会重复
+		y=2*(rand()%30+1);	
+		temp_x++;		//防止陷入死循环，种子递增
+		temp_y++;
+	}
+	while((on_or_off(x,y))==1);
+	
+	W_point(x,y,1);	
+
+//将食物坐标存下来
+	food.x=x;
+	food.y=y;
+	
+	W_com(0x36);		//开启扩展指令集，开启绘图显示
+}
+
+/********************************
+按键的判断
+********************************/
+void R_key()
+{
+	if(key_up==0)
+	{
+		delay(10);		//消抖
+		if(key_up==0)
+		{
+			if(snake.direction!=8)
+			{
+				snake.direction=2;
+			}
+		}
+	}
+	if(key_left==0)
+	{
+		delay(10);
+		if(key_left==0)
+		{
+			if(snake.direction!=6)
+			{
+				snake.direction=4;
+			}
+		}
+	}
+	if(key_down==0)
+	{
+		delay(10);
+		if(key_down==0)
+		{
+			if(snake.direction!=2)
+			{
+				snake.direction=8;
+			}
+		}
+	}
+	if(key_right==0)
+	{
+		delay(10);
+		if(key_right==0)
+		{
+			if(snake.direction!=4)
+			{
+				snake.direction=6;
+			}
+		}
+	}
+}
+
+void R_key_sp()
+{
+	if(key_sp==0)
+	{
+		delay(10);
+		if(key_sp==0)
+		{
+			snake.flag=~snake.flag;
+		}
+	}
+}
+
+/********************************
+开始游戏判断
+********************************/
+void start_game()
+{
+	while(snake.flag==0)		//等按键按下
+	{
+		R_key_sp();
+	}
+}
+
+/********************************
+前进一步
+********************************/
+void move_on()
+{
+	uint i;
+	i=0;
+	while(i<7000)		//给足够的时间判断方向键是否按下，时间也不能太长
+	{
+		R_key();
+		i++;
+	}
+
+	switch(snake.direction)		//对方向进行判断
+	{
+		case 2:
+		{
+			if((on_or_off(snake.x,snake.y-2))==0)		//前方为空，直接前进
+			{
+				snake.y=snake.y-2;		//将蛇头的前一个点设为蛇头
+				delay(5);
+				W_point(loc[0][0],loc[0][1],0);		//将蛇尾熄灭
+				delay_nop();		//给个延时，防止打印出错
+				W_point(snake.x,snake.y,1);		//点亮蛇头
+				W_com(0x36);
+	
+				for(i=0;i<snake.sub;i++)		//对数组进行移动
+				{
+					loc[i][0]=loc[i+1][0];
+					loc[i][1]=loc[i+1][1];
+				}						
+				loc[snake.sub][0]=snake.x;
+				loc[snake.sub][1]=snake.y;
+			}
+			else		//前方不为空，则有两种情况，食物跟撞墙
+			{
+				if((snake.x==food.x)&&(snake.y-2==food.y))		//食物的情况
+				{
+					snake.score++;		//分数加1
+					snake.sub++;		//蛇头数组下标加1
+
+					//打印新的分数
+					win_score=snake.score;
+					W_score();
+	
+					snake.y=snake.y-2;		//调整蛇头
+
+					loc[snake.sub][0]=snake.x;
+					loc[snake.sub][1]=snake.y;
+
+					W_food();		//打印新的食物出来
+				}
+				else		//撞墙的情况
+				{
+					snake.life=0;		//蛇直接挂了
+				}
+			}
+			break;
+		}
+		case 4:
+		{
+			if((on_or_off(snake.x-2,snake.y))==0)
+			{
+				snake.x=snake.x-2;
+				delay(5);
+				W_point(loc[0][0],loc[0][1],0);
+				delay_nop();
+				W_point(snake.x,snake.y,1);
+				W_com(0x36);
+	
+				for(i=0;i<snake.sub;i++)
+				{
+					loc[i][0]=loc[i+1][0];
+					loc[i][1]=loc[i+1][1];
+				}						
+				loc[snake.sub][0]=snake.x;
+				loc[snake.sub][1]=snake.y;
+			}
+			else
+			{
+				if((snake.x-2==food.x)&&(snake.y==food.y))
+				{
+					snake.score++;
+					snake.sub++;
+
+					win_score=snake.score;
+					W_score();
+	
+					snake.x=snake.x-2;
+
+					loc[snake.sub][0]=snake.x;
+					loc[snake.sub][1]=snake.y;
+	
+					W_food();
+				}
+				else
+				{
+					snake.life=0;
+				}
+			}
+			break;
+		}
+		case 6:
+		{
+			if((on_or_off(snake.x+2,snake.y))==0)
+			{
+				snake.x=snake.x+2;
+				delay(5);
+				W_point(loc[0][0],loc[0][1],0);
+				delay_nop();
+				W_point(snake.x,snake.y,1); 
+				W_com(0x36);
+	
+				for(i=0;i<snake.sub;i++)
+				{
+					loc[i][0]=loc[i+1][0];
+					loc[i][1]=loc[i+1][1];
+				}						
+				loc[snake.sub][0]=snake.x;
+				loc[snake.sub][1]=snake.y;
+			}
+			else
+			{
+				if((snake.x+2==food.x)&&(snake.y==food.y))
+				{
+					snake.score++;
+					snake.sub++;
+
+					win_score=snake.score;
+					W_score();
+	
+					snake.x=snake.x+2;
+
+					loc[snake.sub][0]=snake.x;
+					loc[snake.sub][1]=snake.y;
+	
+					W_food();
+				}
+				else
+				{
+					snake.life=0;
+				}
+			}
+			break;
+		}
+		case 8:
+		{
+			if((on_or_off(snake.x,snake.y+2))==0)
+			{
+				snake.y=snake.y+2;
+				delay(5);
+				W_point(loc[0][0],loc[0][1],0);
+				delay_nop();
+				W_point(snake.x,snake.y,1);
+				W_com(0x36);
+	
+				for(i=0;i<snake.sub;i++)
+				{
+					loc[i][0]=loc[i+1][0];
+					loc[i][1]=loc[i+1][1];
+				}						
+				loc[snake.sub][0]=snake.x;
+				loc[snake.sub][1]=snake.y;
+			}
+			else
+			{
+				if((snake.x==food.x)&&(snake.y+2==food.y))
+				{
+					snake.score++;
+					snake.sub++;
+
+					win_score=snake.score;
+					W_score();
+	
+					snake.y=snake.y+2;
+
+					loc[snake.sub][0]=snake.x;
+					loc[snake.sub][1]=snake.y;
+
+					W_food();
+				}
+				else
+				{
+					snake.life=0;
+				}
+			}
+			break;
+		}
+	}
+}
