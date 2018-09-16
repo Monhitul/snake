@@ -1003,3 +1003,230 @@ void move_on()
 		}
 	}
 }
+
+/********************************
+外部中断0初始化,用于实现暂停功能
+********************************/
+void INT0_init()
+{
+	EA=1;		//打开总中断
+	EX0=1;		//打开外部中断0
+	IT0=1;		//下降沿有效	
+}
+
+/********************************
+定时器中断0初始化,用于实现计时功能,晶振用12.0592MHZ的
+********************************/
+void Timer0_init()
+{
+	TMOD=0x01;		//设置工作方式
+	TH0=0x3b;		//50ms
+	TL0=0xb9;
+	EA=1;		//开总中断
+	ET0=1;		//打开定时器中断0
+	TR0=1;		//开始工作
+}
+
+/********************************
+贪吃蛇子程序
+********************************/
+void snake_son()
+{
+	INT0_init();		//启动外部中断0，这时确认键开始起作用
+
+	if(snake.flag==1)		//在没被暂停的情况下进行
+	{
+		move_on();		//前进一步
+		delay(snake.speed);		//延时一段时间，作为改变速度的地方
+
+		while(key_speed==0)		//加速键按下时
+		{
+			uchar temp_speed=snake.speed/8000;		//延时参数变小，前进速度变大
+			move_on();
+			delay(temp_speed);
+		}
+	}				
+}
+
+void snake_son1()		//蛇的另一个子函数，最后一关用
+{
+	INT0_init();		//启动外部中断0
+
+	if(snake.flag==1)
+	{
+		uchar temp_x,temp_y;
+		temp_x=loc[0][0];		//存放蛇尾坐标
+		temp_y=loc[0][1];
+
+		move_on();
+		delay_nop();
+		W_point(temp_x,temp_y,1);		//前进后蛇尾不会熄灭
+		W_com(0x36);
+		delay(snake.speed);
+
+		while(key_speed==0)		//加速键按下时
+		{
+			uchar temp_speed=snake.speed/8000;
+			temp_x=loc[0][0];
+			temp_y=loc[0][1];
+			move_on();
+			delay_nop();
+			W_point(temp_x,temp_y,1);
+			W_com(0x36);
+			delay(temp_speed);
+		}
+	}				
+}
+
+void main()
+{
+	Again:;		//goto语句，在蛇挂了的时候用于重新开始
+	LCD_init();		//对LCD初始化
+	W_word();		//开始界面
+
+	Clear_GD();		//把GDRAM清屏
+
+	start_game();		//判断是否要开始游戏	
+
+	W_map1();		//画第一关地图
+	
+	W_com(0x30);		//打开基本指令集
+	W_com(0x01);		//对DDRAM清屏
+
+	W_score_word();		//打印计分的部分
+	W_score();
+
+	Timer0_init();		//打开定时器中断0，开始计时
+
+	init_snake();		//初始情况
+	W_food();
+
+	delay(500);
+
+	while(snake.life==1)		//第一关，在蛇还活着的前提下才进行
+	{
+		snake_son();		//调用子程序，实现主要功能
+		if(snake.score==10)		//达到过关条件
+		{
+			delay(500);
+			snake.flag=0;		//停止计时，顺便为后面判断游戏是否继续做准备
+			win_score=0;		//分数清零
+
+			LCD_init();
+			W_map_word();		//打印过关页面
+			Clear_GD();
+
+			start_game();
+
+			//第二个地图
+			W_map1();
+			W_map2();
+
+			W_com(0x30);
+			W_com(0x01);
+
+			W_score_word();		//打印计分的部分
+			W_score();
+
+			//在进入下一关前打印计时里的分钟，
+			//避免在计时函数里重复打印，浪费CPU
+			LCD_pos(3,6);
+			W_data(num[min]);
+			W_data(':');
+
+			init_snake();
+			snake.speed=30;		//第二关速度增大
+			W_food();
+
+			while(snake.life==1)		//第二关，再次进入循环
+			{
+				snake_son();	
+				if(snake.score==10)
+				{
+					delay(500);
+					snake.flag=0;
+					win_score=0;
+
+					LCD_init();
+					W_last_part();
+					Clear_GD();
+
+					start_game();
+
+					W_map1();
+
+					W_com(0x30);
+					W_com(0x01);
+
+					W_score_word();		//打印计分的部分
+					W_score();
+
+					LCD_pos(3,6);
+					W_data(num[min]);
+					W_data(':');
+
+					init_snake();
+					snake.speed=80;		//速度放慢一点
+					W_food();
+
+					while(snake.life==1)		//第三关
+					{
+						snake_son1();
+						if(snake.score==10)
+						{
+							delay(500);
+							LCD_init();
+							W_bye_word();
+							Clear_GD();
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	if(snake.life==0)		//游戏over的处理
+	{
+		snake.flag=0;
+		LCD_init();
+
+		W_over_word();
+		LCD_bling();		//屏幕闪烁
+
+		start_game();
+
+		snake.flag=0;
+
+		//时间清零
+		min=0;
+		sec=0;
+
+		goto Again;		//返回重新开始
+	}
+
+	while(1);
+
+}
+
+void int0() interrupt 0		//外部中断0函数
+{
+	delay(10);
+	if(key_sp==0)
+	{
+		snake.flag=~snake.flag;		//将暂停标志取反，实现暂停、开始
+	}
+}
+
+uchar time_count;		//计数的
+
+void timer0() interrupt 1		//定时器中断0
+{
+	TH0=0x3b;		//50ms
+	TL0=0xb9;
+	time_count++;
+	if(time_count==20)		//每过1s就调用函数
+	{
+		time_count=0;
+		W_time();	
+	}
+}
